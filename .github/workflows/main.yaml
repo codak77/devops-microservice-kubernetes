@@ -33,93 +33,103 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
 # cart image build
-      - name: Build and push carts image
-        uses: docker/build-push-action@v2
-        with:
-          context: ./carts/docker/carts
-          file: ./carts/docker/carts/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/microservice:latest
+      # - name: Build and push carts image
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: ./carts/docker/carts
+      #     file: ./carts/docker/carts/Dockerfile
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/microservice:latest
 
 # catalogues build
-      - name: Build and push catalogue image
-        uses: docker/build-push-action@v2
-        with:
-          context: ./catalogue/docker/catalogue
-          file: ./catalogue/docker/catalogue/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/catalogue:latest
+      # - name: Build and push catalogue image
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: ./catalogue/docker/catalogue
+      #     file: ./catalogue/docker/catalogue/Dockerfile
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/catalogue:latest
 
 # payment image
-      - name: Build and push payment image
-        uses: docker/build-push-action@v2
-        with:
-          dockerfile: go/src/github.com/microservices-demo/payment/docker/payment/Dockerfile-release
-          path: go/src/github.com/microservices-demo/payment/docker/payment
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/payment:latest
+      # - name: Build and push payment image
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     dockerfile: go/src/github.com/microservices-demo/payment/docker/payment/Dockerfile-release
+      #     path: go/src/github.com/microservices-demo/payment/docker/payment
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/payment:latest
 # catalogue db image      
-      - name: Build and push catalogue-db image
-        uses: docker/build-push-action@v2
-        with:
-          context: ./catalogue/docker/catalogue-db
-          file: ./catalogue/docker/catalogue-db/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/catalogue-db:latest
+      # - name: Build and push catalogue-db image
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: ./catalogue/docker/catalogue-db
+      #     file: ./catalogue/docker/catalogue-db/Dockerfile
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/catalogue-db:latest
 
 # front-end image      
-      - name: Build and push frontend
-        uses: docker/build-push-action@v2
-        with:
-          context: ./front-end
-          file: ./front-end/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/front-end:latest
+      # - name: Build and push frontend
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: ./front-end
+      #     file: ./front-end/Dockerfile
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/front-end:latest
 
  # orders image      
-      - name: Build and push orders
-        uses: docker/build-push-action@v2
-        with:
-          context: ./orders/docker/orders
-          file: ./orders/docker/orders/Dockerfile.github
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/order:latest        
+      # - name: Build and push orders
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: ./orders/docker/orders
+      #     file: ./orders/docker/orders/Dockerfile.github
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/order:latest        
 
  # queue-master image      
-      - name: Build and push queue-master
-        uses: docker/build-push-action@v2
-        with:
-          context: ./queue-master/docker
-          file: ./queue-master/docker/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/queue-image:latest
+      # - name: Build and push queue-master
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: ./queue-master/docker
+      #     file: ./queue-master/docker/Dockerfile
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/queue-image:latest
 
 # shipping image      
-      - name: Build and push shipping
-        uses: docker/build-push-action@v2
-        with:
-          context: ./shipping/docker/shipping
-          file: ./shipping/docker/shipping/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/shipping:latest
+      # - name: Build and push shipping
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: ./shipping/docker/shipping
+      #     file: ./shipping/docker/shipping/Dockerfile
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/shipping:latest
 
 # user image      
+      # - name: Build and push user
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: ./user/docker/user
+      #     file: ./user/docker/user/Dockerfile-release
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/user:latest
+
+# user db image      
+      # - name: Build and push user-db
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: ./user/docker/user-db
+      #     file: ./user/docker/user-db/Dockerfile
+      #     push: true
+      #     tags: ${{ secrets.DOCKER_USERNAME }}/user-db:latest
+
+# reverse_proxy frontend   
       - name: Build and push user
         uses: docker/build-push-action@v2
         with:
-          context: ./user/docker/user
-          file: ./user/docker/user/Dockerfile-release
+          context: ./reverse_proxy_hng-main/frontend/
+          file: ./reverse_proxy_hng-main/frontend/Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/user:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/reverse-proxy-frontend:latest
 
-# user db image      
-      - name: Build and push user-db
-        uses: docker/build-push-action@v2
-        with:
-          context: ./user/docker/user-db
-          file: ./user/docker/user-db/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/user-db:latest
 
 
 #   deploy:
