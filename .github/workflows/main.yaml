@@ -37,7 +37,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./carts/docker/carts
-          file: Dockerfile
+          file: ./carts/docker/carts/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/microservice:latest
 
@@ -46,7 +46,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./catalogue/docker/catalogue
-          file: Dockerfile
+          file: ./catalogue/docker/catalogue/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/catalogue:latest
 
@@ -63,7 +63,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./catalogue/docker/catalogue-db
-          file: Dockerfile
+          file: ./catalogue/docker/catalogue-db/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/catalogue-db:latest
 
@@ -72,7 +72,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./front-end
-          file: Dockerfile
+          file: ./front-end/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/front-end:latest
 
@@ -81,7 +81,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./orders/docker/orders
-          file: Dockerfile.github
+          file: ./orders/docker/orders/Dockerfile.github
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/order:latest        
 
@@ -90,7 +90,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./queue-master/docker
-          file: Dockerfile
+          file: ./queue-master/docker/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/queue-image:latest
 
@@ -99,7 +99,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./shipping/docker/shipping
-          file: Dockerfile
+          file: ./shipping/docker/shipping/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/shipping:latest
 
@@ -108,7 +108,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./user/docker/user
-          file: Dockerfile-release
+          file: ./user/docker/user/Dockerfile-release
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/user:latest
 
@@ -117,7 +117,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./user/docker/user-db
-          file: Dockerfile
+          file: ./user/docker/user-db/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/user-db:latest
 
