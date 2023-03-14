@@ -121,8 +121,8 @@ jobs:
       #     push: true
       #     tags: ${{ secrets.DOCKER_USERNAME }}/user-db:latest
 
-# reverse_proxy frontend   
-      - name: Build and push user
+# reverse_proxy_frontend   
+      - name: Build and push reverse-proxy-frontend
         uses: docker/build-push-action@v2
         with:
           context: ./reverse_proxy_hng-main/frontend/
