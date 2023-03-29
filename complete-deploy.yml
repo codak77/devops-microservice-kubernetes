@@ -1,0 +1,1039 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sock-shop
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carts
+  labels:
+    name: carts
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: carts
+  template:
+    metadata:
+      labels:
+        name: carts
+    spec:
+      containers:
+      - name: carts
+        image: weaveworksdemos/carts:0.4.8
+        env:
+         - name: JAVA_OPTS
+           value: -Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+        resources:
+          limits:
+            cpu: 300m
+            memory: 500Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        ports:
+        - containerPort: 80
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+              - all
+            add:
+              - NET_BIND_SERVICE
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp-volume
+      volumes:
+        - name: tmp-volume
+          emptyDir:
+            medium: Memory
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carts
+  annotations:
+        prometheus.io/scrape: 'true'
+  labels:
+    name: carts
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 80
+    targetPort: 80
+  selector:
+    name: carts
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carts-db
+  labels:
+    name: carts-db
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: carts-db
+  template:
+    metadata:
+      labels:
+        name: carts-db
+    spec:
+      containers:
+      - name: carts-db
+        image: mongo
+        ports:
+        - name: mongo
+          containerPort: 27017
+        securityContext:
+          capabilities:
+            drop:
+              - all
+            add:
+              - CHOWN
+              - SETGID
+              - SETUID
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp-volume
+      volumes:
+        - name: tmp-volume
+          emptyDir:
+            medium: Memory
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carts-db
+  labels:
+    name: carts-db
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 27017
+    targetPort: 27017
+  selector:
+    name: carts-db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogue
+  labels:
+    name: catalogue
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: catalogue
+  template:
+    metadata:
+      labels:
+        name: catalogue
+    spec:
+      containers:
+      - name: catalogue
+        image: weaveworksdemos/catalogue:0.3.5
+        command: ["/app"]
+        args:
+        - -port=80
+        resources:
+          limits:
+            cpu: 200m
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        ports:
+        - containerPort: 80
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+              - all
+            add:
+              - NET_BIND_SERVICE
+          readOnlyRootFilesystem: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 300
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 180
+          periodSeconds: 3
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogue
+  annotations:
+        prometheus.io/scrape: 'true'
+  labels:
+    name: catalogue
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 80
+    targetPort: 80
+  selector:
+    name: catalogue
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogue-db
+  labels:
+    name: catalogue-db
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: catalogue-db
+  template:
+    metadata:
+      labels:
+        name: catalogue-db
+    spec:
+      containers:
+      - name: catalogue-db
+        image: weaveworksdemos/catalogue-db:0.3.0
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: fake_password
+          - name: MYSQL_DATABASE
+            value: socksdb
+        ports:
+        - name: mysql
+          containerPort: 3306
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogue-db
+  labels:
+    name: catalogue-db
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 3306
+    targetPort: 3306
+  selector:
+    name: catalogue-db
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-configmap
+  labels:
+    name: frontend-configmap
+  namespace: sock-shop
+data:
+  front-end.conf: |-
+    server {
+
+    listen 443 ssl;
+
+    server_name localhost;
+    ssl_certificate /etc/nginx/ssl/tls.crt;
+    ssl_certificate_key /etc/nginx/ssl/tls.key;
+
+    # ssl on;
+    # ssl_session_timeout 5m;
+    # ssl_protocols TLSv1 TLSv1.1 TLSV1.2;
+    # ssl_ciphers "HIGH:!aNULL:!MD5 or HIGH:!aNULL:!MD5:!3DES";
+    # ssl_prefer_server_ciphers on;
+
+    location / {
+    proxy_pass http://localhost:8079;
+    }
+    }
+    
+    server{
+    if ($host = localhost) {
+      return 301 https://$host$request_uri;
+    }
+
+    server_name localhost;
+    listen 80;
+    return 404;
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: entrypoint-configmap
+  labels:
+    name: entrypoint-configmap
+  namespace: sock-shop
+data:
+  entrypoint.sh: |-
+    #!/bin/sh
+    apk --update add nginx openrc bash
+    openrc 
+    touch /run/openrc/softlevel
+    rm -f /etc/nginx/nginx.conf
+
+    cat <<EOT > nginx.conf
+    worker_processes  1;
+    events {
+    worker_connections  1024;
+    }
+    http {
+      include       mime.types;
+      default_type  application/octet-stream;
+      sendfile        on;
+      keepalive_timeout  65;
+      include /etc/nginx/conf.d/*.conf;
+      server {
+        listen       80;
+        # server_name  localhost;
+        location / {
+        root   html;
+        index  index.html index.htm;
+        }
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+        root   html;
+        }
+      }  
+    }   
+
+    EOT
+
+    mv nginx.conf /etc/nginx/nginx.conf
+
+    cat <<EOT > script.sh
+    #!/bin/sh
+    until rc-service nginx restart; do
+    echo 'rc_provide="loopback net"' >> /etc/rc.conf && rc-service nginx start && rc-update add nginx default
+    sleep 5
+    done
+
+    EOT
+
+    chmod u+x script.sh
+    ./script.sh
+    /usr/local/bin/npm start
+---
+apiVersion: v1
+kind: Secret
+data:
+ tls.key: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ0KTUlJSktnSUJBQUtDQWdFQXRwM2RFeGhxVmpuRlUrV3RYNG9TY3BQendnUktZdjExTUZZcmxLeUhBMGc3QWFjaw0KVHF5UEpOSjByTnozOWZhZHVRc3VrbHljM1YzeVBUdHNPYUcrdHgvTmdLb1dUb3U5MGNqTURuTEZCM21Vbk1YNg0KSlU2WXhjU0ZoZjRUQmY2b2JwVjRDQzIxWUdXSzFycHFadWZkc0xxcm5QbGRSUDFPMWcrLyttNEtvazBVWGp3aQ0Kall5R0dkU0h1aXJxR2w4K3dXaVk4a3NnV1NEckhJNEV2M0dCck9UL1c3cVBHLytYTDRwMFB6ZnFFVlZaMjgxTQ0KYjNzMHBHNEtKS3k5T1RjMDA4Rks0Z1JkM0wzc3Uwdnh6UEg3K1lBenlBS2hDeEtoYzNBNWR2UkZqUW9SNmJrbg0KQkdIWXd4YUVPbzZTanN1S0FpTVg4T0pqWGtwaWREQ3pYbXhiM3pOOG5uMXBReWROeWFZVzBzckRiN3gySTVDNA0KMjBYejJjbUU2cVczQVhZenc4QzJtVmtjbEFIeXE5RkhhY0J0M1ZFRHB1akhHaVNqMjJwUk5RT3Q5dUJudGtyTA0KbjRDNjNDWjRoYmRlVDV0SCtmWmdaRm9TeDhOazJhdVppdDhESFIwQWdoUGsweWNBU3J4MTRld3BhTXkzd1Z0SA0KbUFMc1pIamNDVEJmNVUxTnJZSWNSb21ycVlsSk1oTFBBalIvOXoyQXQvbEpuLzNxY0ZkNlgzWmtjM2xXRzU1YQ0KTXFwYU00SnBsODZGeWVKRDY4NS9QUTIrR0JKaWpkamhJM2ZtWEcyNnZtdHRXNFBpTUdaSjRzVGtuZDBGZTRkWg0KcmNJNjhVUTN6UlVlTy9JZDZMN2IwTEJTVmpsSHJydmUxdUVvMHRQK2UrZUVIbVpjdGZjd3c3NFlVMzBDQXdFQQ0KQVFLQ0FnRUFpR29NaHdNcURCZERySlJabXBETmp3R3VpVFFqVFNjQXI0YnZMelJoOXJXeVBsM1k1VnhKNGJ2RQ0KcEl5OFBlUm5sWjhndnZ5bndVVTRlejAwYnlqQUNwT2JNNDNhOC9tM1prcVZCQVgvNE1HVm5qYlYwYUNReHNzeQ0KNHhFVXJObTZnRUR2VlV5dnZMNmRwQ0hFOGZJcXpLWGxKSEd5bHFLU2paMWVUM2g4UVJsTEtjbktGZXJ2RWNTTg0KVHloWGtET3Q4VlJ0VERHS2pJbm1sNElQVWVNOGR5YnBDbUNtSHNnaTY4U0ZhZVFlMmF2a1lDbFArOGNSWC9ORA0KYUhvUkwvaHBZZlYyTnJnRVZhMGFkaDhaRlh0K09yYmw5M2JmVGlJd3NNY1laaCs3Qk15TTdRYitlbXVOUE01Sg0KSUdUNFhlcjF3UHJ1RzJkQnkySE5nZllQUjIyeWdobkZqaWJtcFNOY21Bb1R2ejdxWUNWMjBhc3B5RjBlamk0QQ0KSVp3T2lMUTh1NHo5MGZGMlhodGZoZ0c4US8rTWxnMEJvbXBLQk8xeHpYaGtlRlk2QlE3eXdWZlRTa0lhbTh1Yw0KMU1LTkFZclVSYmsxY29IVU1iWDBYK3NzcUZybzJSNG94K0Njb1VKb3hCZFB1Y3FUdm1PWG9CUy9sQmFJOVY3cQ0KVjM5RmRtbytnQTRGU1gyajU3K3pSSE5kMXM2eHRXVzUzVW9mRU9OcDVqWDVGNVF0QkJRVUQrZHRJc04xNTBVWg0KcTFuU2ZVUDR3aDBUNmc2bk84YWE0VUJBWDUxQTlFZUxHWTRGVzF0RmFrQjN1M2hoZ1JBZmM5bFY0TVBTWEJWLw0KTzdRRkNIMnQ4dE02Y3RvZllUTGtHa1dmZFVoT0poL2NGMUc1VVBpUVowUk1CQXFCOHdFQ2dnRUJBT056R2NHOQ0KejB6OCt3MVE2L3lkd0hZOVk4YUMrdTVOcnMrMU4rYThsMzdwa0dwcklqdlJ4bXd3eFdudUdKV2lHbHVrdEY5Lw0KOTBac0FRbW1YSGZJVklKTDhjRTZRTWtTaFd3WkRBcE1FYWlWcVVNcFlXQ1RJOFpYa1VsNFN2UXRVZUtGN0Ewcw0KK3hFNEJhTlVhanBFUnowQkt6bHo3SWdTbEVCMURsQkprV3Z3RVI4N1hUcVFCeWtYTURkNXJSY0dlck5HTWpRNw0KNDZMZzJzbVNkZXdRdVlaVzNXbUtxNlA3ZEZYblJqMHZXUUp3K3BBZmdzb2NmRnFLL3RyenliQlJHRGZuYzNmdg0KOHNOUFUrTXUwdFI5cFpCTXBUMVdBN1Z0eUxrbk5aWEdSSkZDcXQrQ2JmVkY3U1o1a09GQk1BaVpGMGtDU3M0aw0KR2VDRUZMaHBFMVBxVFBFQ2dnRUJBTTJLR0JiU0cwS0k0MCt3NmtqUXZ5YWtqd0J0OU9Ocm9DWUVhUk9GM0tOUw0Ka1g3SVRVNDhXaExhRisyUFMwcGdqZzA5RUxneEhXNjN1UVpjRWRMRmdvYjdFc1grTmJhYmNiTHh1U1FEK2UxNg0Ka2JqelRqeWdrT0ZZNHhDaW4wZHRZSm1lZ3FacU1QeDd2azl1ZWl3RkZqcGN4WXhtUC8rbFVCWEVBVW5RK3RiYw0KVlZtckRhV2lHY3FmOXp6N1M2TVdoMllSUWtyYkwyZllSbUtYU29EMEIrdk5DdnZlcmoyYmxFeThvZFB5cHVPdQ0KMlo1NXkxeFR3NjR2ZmtpeUxZMlpVUGVFZzd2MkxOMUVkUnhmaTBONmVrbnFubnFvV2dqYVMybUVsdnA2QkIrVg0KV3pFTEZWdE5CcHRDV0VsTVZVcjFSVXBCMC9LSGcrcTRjSnd5clM0dUgwMENnZ0VBVVl3dCt1bWJ6b1dSV1VmZg0KSkRaSEQ5Mll6VTZldXh2OUJobDZEbThsZmVvdHpnblZQMDlKN2ZaYWdVMU5ZVEM2ZElzTDVJV1QyWnJWa0drbQ0KRkFndVRIMEFFNEJZUS84dytQM045RThyc1o3ZkRlWmpOR1hzMktzQ3V5MjI2ZTdwd2VhMEtGRXRQeEl2NjB4VA0KdmNwSEpGY3I4VEJmNkxXSWs4ZWtOeUw1VVpMRUFNZWUrR1UxUEFWRlUwNTd3WnFnR1hDY2hWL0hrTmsvZUMvYg0KdWFTUmI5bnJEbkVhY3ZPdjFURFRYUktCdmo5VmhxRFZtck0xM3B5aEhVMTB6Wk4xdEcxMlY5VWUyK213TU83VA0KeGoyNlE0OUhXME5nbHdiaWhZZktUWVhGaGJNNlltSjRIQTFUSm8xRlpZMml0Q0ozVjhUTG56Y1FWQS9uQWVzaQ0KYzk2NGNRS0NBUUVBZzYyTzFUL3gydVJiekhncEFGRkx4UFB6OFhDQVRScHNWUzdLS29tOTJweFJQZ29SREtnNQ0KaEk1WWVnY3RVdzhjc25xR3Rab3hvdmJ0QUpnSGl5S2lCdHZmSVIxRlNDRzU2OHhVc2pBaDgvUnNXekwwMG42RA0Ka3ZzaExVMGlBZDZlM292Z1k4RHdkVERKc1pXemkzUU8wNEVQeG16VFgzS0hKZ3FXVUxZam5YYzI3dVZaTHQzMA0KN0EwamxkdmdqekVsdVV3aFRsZXh2VE9mbEJZYzB4U0Q1cHRNQ0NTWE9EenQrMk4xd1pWWk9kQ1E5cWhNa20vUA0KazA0MTkxaS9PbElZdnhvVVUxelpUVUJJVHM4Zkp6SFdHbmpHNHducjlIUDFrRG96aDNDWUo2dkY2bHVSYVJhbA0KdnQzNE5hMURqMndtNGZYZVZTaGdhUVdVajEwZitjL3VtUUtDQVFFQWl2eGpYTjJnbjhndDBPUVFZOHFhcVovQQ0KcDhvaE9SV3M3OC9ZMFFxVUNVd2xnNWFCd1cwL2Y3RlpWNUdPSnc3UnphNmZMK2lXem81WGhxSG5zbFZYd1lTOQ0KVEs2aW8waG1ISXFFbE5LRUZndVFTdUI4Uzl6YU8yQW55RTRUcWlESUNFK0RWYUVDK1NwNmN2YU9MazN0Y3l2Rw0KSXplQkcxYXBINUlqOXJCNG55VkQ3RzNaTkRpVFJyTEloRURzTE5PcjNDVzdtamtZbEhmQ1FZWEsrTk5wYkdDcA0KRXFhdktDV0tCUkhuZTMvV3B6QW5YcTllVVQwMlZ6NWNITkRWeHU5Sm9lUmZzc1h3QVdVL3B0ZFRCL0JjZVhiYg0Kc3lHeTIzb3pkTkFZcndZYW1GS3RPWnVRMTNJcW5KQzJ2Y01vNXFjRzMzNkV0L1lEN0VwUDJNclhyQXAzN3c9PQ0KLS0tLS1FTkQgUlNBIFBSSVZBVEUgS0VZLS0tLS0NCg==
+ tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tDQpNSUlGb1RDQ0E0a0NGRjEzaXJadDNHM1dURk1yQVg0bnB6Q1UwZ2RyTUEwR0NTcUdTSWIzRFFFQkN3VUFNSUdNDQpNUXN3Q1FZRFZRUUdFd0pPUnpFTU1Bb0dBMVVFQ0F3RFJrTlVNUXd3Q2dZRFZRUUhEQU5CY0c4eEVqQVFCZ05WDQpCQW9NQ1ZOdlkyc3RjMmh2Y0RFUE1BMEdBMVVFQ3d3R1JHVjJiM0J6TVJnd0ZnWURWUVFEREE5elpXRnVMWE4wDQpaWFpsYm5NdWJXVXhJakFnQmdrcWhraUc5dzBCQ1FFV0UzTmxZVzVqYUdrM04wQm5iV0ZwYkM1amIyMHdIaGNODQpNak13TXpFNU1UYzBPVEEzV2hjTk1qTXdOREU0TVRjME9UQTNXakNCakRFTE1Ba0dBMVVFQmhNQ1RrY3hEREFLDQpCZ05WQkFnTUEwWkRWREVNTUFvR0ExVUVCd3dEUVhCdk1SSXdFQVlEVlFRS0RBbFRiMk5yTFhOb2IzQXhEekFODQpCZ05WQkFzTUJrUmxkbTl3Y3pFWU1CWUdBMVVFQXd3UGMyVmhiaTF6ZEdWMlpXNXpMbTFsTVNJd0lBWUpLb1pJDQpodmNOQVFrQkZoTnpaV0Z1WTJocE56ZEFaMjFoYVd3dVkyOXRNSUlDSWpBTkJna3Foa2lHOXcwQkFRRUZBQU9DDQpBZzhBTUlJQ0NnS0NBZ0VBdHAzZEV4aHFWam5GVStXdFg0b1NjcFB6d2dSS1l2MTFNRllybEt5SEEwZzdBYWNrDQpUcXlQSk5KMHJOejM5ZmFkdVFzdWtseWMzVjN5UFR0c09hRyt0eC9OZ0tvV1RvdTkwY2pNRG5MRkIzbVVuTVg2DQpKVTZZeGNTRmhmNFRCZjZvYnBWNENDMjFZR1dLMXJwcVp1ZmRzTHFyblBsZFJQMU8xZysvK200S29rMFVYandpDQpqWXlHR2RTSHVpcnFHbDgrd1dpWThrc2dXU0RySEk0RXYzR0JyT1QvVzdxUEcvK1hMNHAwUHpmcUVWVloyODFNDQpiM3MwcEc0S0pLeTlPVGMwMDhGSzRnUmQzTDNzdTB2eHpQSDcrWUF6eUFLaEN4S2hjM0E1ZHZSRmpRb1I2YmtuDQpCR0hZd3hhRU9vNlNqc3VLQWlNWDhPSmpYa3BpZERDelhteGIzek44bm4xcFF5ZE55YVlXMHNyRGI3eDJJNUM0DQoyMFh6MmNtRTZxVzNBWFl6dzhDMm1Wa2NsQUh5cTlGSGFjQnQzVkVEcHVqSEdpU2oyMnBSTlFPdDl1Qm50a3JMDQpuNEM2M0NaNGhiZGVUNXRIK2ZaZ1pGb1N4OE5rMmF1Wml0OERIUjBBZ2hQazB5Y0FTcngxNGV3cGFNeTN3VnRIDQptQUxzWkhqY0NUQmY1VTFOcllJY1JvbXJxWWxKTWhMUEFqUi85ejJBdC9sSm4vM3FjRmQ2WDNaa2MzbFdHNTVhDQpNcXBhTTRKcGw4NkZ5ZUpENjg1L1BRMitHQkppamRqaEkzZm1YRzI2dm10dFc0UGlNR1pKNHNUa25kMEZlNGRaDQpyY0k2OFVRM3pSVWVPL0lkNkw3YjBMQlNWamxIcnJ2ZTF1RW8wdFArZStlRUhtWmN0ZmN3dzc0WVUzMENBd0VBDQpBVEFOQmdrcWhraUc5dzBCQVFzRkFBT0NBZ0VBaEtTNm1VZERaU1BWc1luRFFEQmhpWVlxZFRPODg1Z3F1YlgzDQpoLys0K3JSV2xhQkVRWHR3VXlFQWMra3JGdERuMCt6Z2ZXcWo2T1pNaWRoNWxLYnZTdy9XSXpzcHJEK2Qxa0diDQpRTXNvd0JpVy9CVTEwUG1kdS9BUm0wZWwraGpvVWxESE1Ta3gvQU9idnBmTXFmNUprVi8vaVRyZi9CNENPOU54DQpYZjVpQ2k1c0RYWk0rVGs2T21zZlFDNlJENmhKdDZxVk5XZGc1ZEQzVVduTis1RFFQeTN2bzlmZFZuaGFQcGZKDQp3MngybkxZbDQ2VU5yMlFiSk9tWW5kc1hZQzNKcGdFUjhxNVM2TXJQUWduTE9ZSEVBT1E5U1BibEVtanVuSmMzDQpNSFlZekJsTHJnOVYwMHBWZDIzbmZjY1RTMEJncklnb3FNSmg5am9vd2RTaUM5ZXBONGM2TmRmazNpREVKditwDQpyaFZqVHhhYWhiKzRhdTVKR1V1SHhBb1RGM0ZOalEyejBRWHlIZVVXNDk2V3ZUMEd0NGhJZ3hkWDJULzZrV2pUDQpzSHFjeTlPVVdSQjZYMjc4SzB6N0tnYU1JNFlqbkV6dm1sM2wzNWRLK3h4WXRQd0lHTUNlenpEamJ4UHRYUEJqDQpxWHdIdm9QUE8rWDFjSFcvVGNYaTVERVlYZXI1RDVmWlFhVmpEU3kwQ0JQK3lWYTRTOHJSZVp4T1BxQ1BtbEV2DQpkM005UG12YURUY29rWEJkWDA5aGpzM0srNlk0Y3ZpdUVDTmVnZWhWNWlTbHJlSVgxZnpCUzU1ZFVnSUtLSVBlDQpicW56TzcybDBwTnB6bGlnSXJaSSsxTUNJSmFSTDFyOUY3UGR0VVhWamFpTURXbXUzTE03WU16VmxwWVZDM0RVDQo2enFvSlFZPQ0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQ0K
+metadata:
+ name: frontend-ssl
+ namespace: sock-shop
+type: kubernetes.io/tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: front-end
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: front-end
+  template:
+    metadata:
+      labels:
+        name: front-end
+    spec:
+      containers:
+      - name: front-end
+        image: weaveworksdemos/front-end:0.3.12
+        command: ["/bin/sh", "-c"]
+        args:
+          - cp /bin/entrypoint.sh /usr/src/app/;
+            ./entrypoint.sh;
+        resources:
+          limits:
+            cpu: 300m
+            memory: 1000Mi
+          requests:
+            cpu: 100m
+            memory: 300Mi
+        ports:
+        - containerPort: 443
+        - containerPort: 8079
+        env:
+        - name: SESSION_REDIS
+          value: "true"
+        volumeMounts:
+          - name: frontend-ssl
+            mountPath: "/etc/nginx/ssl"
+            readOnly: true
+          - name: entrypoint-configmap
+            mountPath: /bin/entrypoint.sh
+            subPath: entrypoint.sh
+          - name: frontend-configmap
+            mountPath: /etc/nginx/conf.d/front-end.conf
+            readOnly: true
+            subPath: front-end.conf
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsUser: 0
+        # securityContext:
+        #   runAsNonRoot: true
+        #   runAsUser: 10001
+        #   capabilities:
+        #     drop:
+        #       - all
+        #   readOnlyRootFilesystem: true
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8079
+          initialDelaySeconds: 300
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8079
+          initialDelaySeconds: 30
+          periodSeconds: 3
+      volumes:
+        - name: frontend-ssl
+          secret:
+            secretName: frontend-ssl
+        - name: entrypoint-configmap
+          configMap:
+            defaultMode: 0777
+            items:
+            - key: entrypoint.sh
+              path: entrypoint.sh
+            name: entrypoint-configmap
+        - name: frontend-configmap
+          configMap:
+            defaultMode: 0700
+            items:
+            - key: front-end.conf
+              path: front-end.conf
+            name: frontend-configmap
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: front-end
+  annotations:
+        prometheus.io/scrape: 'true'
+  labels:
+    name: front-end
+  namespace: sock-shop
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+    nodePort: 30096
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 443
+    nodePort: 30095
+  selector:
+    name: front-end
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  labels:
+    name: orders
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: orders
+  template:
+    metadata:
+      labels:
+        name: orders
+    spec:
+      containers:
+      - name: orders
+        image: weaveworksdemos/orders:0.4.7
+        env:
+         - name: JAVA_OPTS
+           value: -Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+        resources:
+          limits:
+            cpu: 500m
+            memory: 500Mi
+          requests:
+            cpu: 100m
+            memory: 300Mi
+        ports:
+        - containerPort: 80
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+              - all
+            add:
+              - NET_BIND_SERVICE
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp-volume
+      volumes:
+        - name: tmp-volume
+          emptyDir:
+            medium: Memory
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders
+  annotations:
+        prometheus.io/scrape: 'true'
+  labels:
+    name: orders
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 80
+    targetPort: 80
+  selector:
+    name: orders
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-db
+  labels:
+    name: orders-db
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: orders-db
+  template:
+    metadata:
+      labels:
+        name: orders-db
+    spec:
+      containers:
+      - name: orders-db
+        image: mongo
+        ports:
+        - name: mongo
+          containerPort: 27017
+        securityContext:
+          capabilities:
+            drop:
+              - all
+            add:
+              - CHOWN
+              - SETGID
+              - SETUID
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp-volume
+      volumes:
+        - name: tmp-volume
+          emptyDir:
+            medium: Memory
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-db
+  labels:
+    name: orders-db
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 27017
+    targetPort: 27017
+  selector:
+    name: orders-db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  labels:
+    name: payment
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: payment
+  template:
+    metadata:
+      labels:
+        name: payment
+    spec:
+      containers:
+      - name: payment
+        image: weaveworksdemos/payment:0.4.3
+        resources:
+          limits:
+            cpu: 200m
+            memory: 200Mi
+          requests:
+            cpu: 99m
+            memory: 100Mi
+        ports:
+        - containerPort: 80
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+              - all
+            add:
+              - NET_BIND_SERVICE
+          readOnlyRootFilesystem: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 300
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 180
+          periodSeconds: 3
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment
+  annotations:
+        prometheus.io/scrape: 'true'
+  labels:
+    name: payment
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 80
+    targetPort: 80
+  selector:
+    name: payment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: queue-master
+  labels:
+    name: queue-master
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: queue-master
+  template:
+    metadata:
+      labels:
+        name: queue-master
+    spec:
+      containers:
+      - name: queue-master
+        image: weaveworksdemos/queue-master:0.3.1
+        env:
+         - name: JAVA_OPTS
+           value: -Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+        resources:
+          limits:
+            cpu: 300m
+            memory: 500Mi
+          requests:
+            cpu: 100m
+            memory: 300Mi
+        ports:
+        - containerPort: 80
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: queue-master
+  annotations:
+        prometheus.io/scrape: 'true'
+  labels:
+    name: queue-master
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 80
+    targetPort: 80
+  selector:
+    name: queue-master
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels:
+    name: rabbitmq
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: rabbitmq
+  template:
+    metadata:
+      labels:
+        name: rabbitmq
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3.6.8-management
+        ports:
+        - containerPort: 15672
+          name: management
+        - containerPort: 5672
+          name: rabbitmq
+        securityContext:
+          capabilities:
+            drop:
+              - all
+            add:
+              - CHOWN
+              - SETGID
+              - SETUID
+              - DAC_OVERRIDE
+          readOnlyRootFilesystem: true
+      - name: rabbitmq-exporter
+        image: kbudde/rabbitmq-exporter
+        ports:
+        - containerPort: 9090
+          name: exporter
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9090'
+  labels:
+    name: rabbitmq
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 5672
+    name: rabbitmq
+    targetPort: 5672
+  - port: 9090
+    name: exporter
+    targetPort: exporter
+    protocol: TCP
+  selector:
+    name: rabbitmq
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: session-db
+  labels:
+    name: session-db
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: session-db
+  template:
+    metadata:
+      labels:
+        name: session-db
+      annotations:
+        prometheus.io.scrape: "false"
+    spec:
+      containers:
+      - name: session-db
+        image: redis:alpine
+        ports:
+        - name: redis
+          containerPort: 6379
+        securityContext:
+          capabilities:
+            drop:
+              - all
+            add:
+              - CHOWN
+              - SETGID
+              - SETUID
+          readOnlyRootFilesystem: true
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: session-db
+  labels:
+    name: session-db
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 6379
+    targetPort: 6379
+  selector:
+    name: session-db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shipping
+  labels:
+    name: shipping
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: shipping
+  template:
+    metadata:
+      labels:
+        name: shipping
+    spec:
+      containers:
+      - name: shipping
+        image: weaveworksdemos/shipping:0.4.8
+        env:
+         - name: ZIPKIN
+           value: zipkin.jaeger.svc.cluster.local
+         - name: JAVA_OPTS
+           value: -Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+        resources:
+          limits:
+            cpu: 300m
+            memory: 500Mi
+          requests:
+            cpu: 100m
+            memory: 300Mi
+        ports:
+        - containerPort: 80
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+              - all
+            add:
+              - NET_BIND_SERVICE
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp-volume
+      volumes:
+        - name: tmp-volume
+          emptyDir:
+            medium: Memory
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shipping
+  annotations:
+        prometheus.io/scrape: 'true'
+  labels:
+    name: shipping
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 80
+    targetPort: 80
+  selector:
+    name: shipping
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user
+  labels:
+    name: user
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: user
+  template:
+    metadata:
+      labels:
+        name: user
+    spec:
+      containers:
+      - name: user
+        image: weaveworksdemos/user:0.4.7
+        resources:
+          limits:
+            cpu: 300m
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        ports:
+        - containerPort: 80
+        env:
+        - name: mongo
+          value: user-db:27017
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+              - all
+            add:
+              - NET_BIND_SERVICE
+          readOnlyRootFilesystem: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 300
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 180
+          periodSeconds: 3
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user
+  annotations:
+        prometheus.io/scrape: 'true'
+  labels:
+    name: user
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 80
+    targetPort: 80
+  selector:
+    name: user
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-db
+  labels:
+    name: user-db
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: user-db
+  template:
+    metadata:
+      labels:
+        name: user-db
+    spec:
+      containers:
+      - name: user-db
+        image: weaveworksdemos/user-db:0.3.0
+
+        ports:
+        - name: mongo
+          containerPort: 27017
+        securityContext:
+          capabilities:
+            drop:
+              - all
+            add:
+              - CHOWN
+              - SETGID
+              - SETUID
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp-volume
+      volumes:
+        - name: tmp-volume
+          emptyDir:
+            medium: Memory
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-db
+  labels:
+    name: user-db
+  namespace: sock-shop
+spec:
+  ports:
+    # the port that this service should serve on
+  - port: 27017
+    targetPort: 27017
+  selector:
+    name: user-db
+
